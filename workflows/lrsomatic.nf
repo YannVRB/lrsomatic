@@ -90,6 +90,8 @@ workflow LRSOMATIC {
     main:
 
     def clair3_modelMap = [
+        // HAC-basecalled data (this run): the Rerio HAC Clair3 model matching the basecaller version
+        'dna_r10.4.1_e8.2_400bps_hac@v4.3.0': 'r1041_e82_400bps_hac_v430',
         'dna_r10.4.1_e8.2_400bps_sup@v5.2.0': 'r1041_e82_400bps_sup_v520',
         'dna_r10.4.1_e8.2_400bps_sup@v5.0.0': 'r1041_e82_400bps_sup_v500',
         'dna_r10.4.1_e8.2_400bps_sup@v4.3.0': 'r1041_e82_400bps_sup_v430',
@@ -100,6 +102,8 @@ workflow LRSOMATIC {
     ]
 
     def clairs_modelMap = [
+        // HAC-basecalled data (this run): 400bps v4.3.0 is 5 kHz sampling
+        'dna_r10.4.1_e8.2_400bps_hac@v4.3.0': 'ont_r10_dorado_hac_5khz',
         'dna_r10.4.1_e8.2_260bps_sup@v4.0.0': 'ont_r10_dorado_sup_4khz',
         'dna_r10.4.1_e8.2_400bps_sup@v4.1.0': 'ont_r10_dorado_sup_4khz',
         'dna_r10.4.1_e8.2_400bps_sup@v4.2.0': 'ont_r10_dorado_sup_5khz_ssrs',
