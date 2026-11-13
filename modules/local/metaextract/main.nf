@@ -26,7 +26,7 @@ process METAEXTRACT {
     export basecall_model="${basecall_model}"
     export kinetics="${kinetics}"
     if [ $ont = 'true' ]; then
-        basecall_model=\$(samtools view -H "${bam}" ${args} | awk -F'basecall_model=' '/basecall_model=/ {print \$2; exit}' | awk '{print \$1}' | tr -d '[:space:]')
+        basecall_model=\$(samtools view -H "${bam}" ${args} | awk -F'basecall_model=' '/basecall_model=/ && !found {print \$2; found=1}' | awk '{print \$1}' | tr -d '[:space:]')
     else
         kinetics=\$(samtools view -H ${bam} | awk '/--keep-kinetics/ {found=1} END {print (found ? "true" : "false")}')
         basecall_model="hifi_revio"
