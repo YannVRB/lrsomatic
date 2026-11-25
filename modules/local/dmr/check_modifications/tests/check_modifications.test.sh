@@ -33,7 +33,7 @@ run_case() { # name, fixture path, expected exit code, expected stderr fragment 
 : | gzip > "$tmp/empty.bed.gz"
 
 run_case "5hmC rows present, N_other > 0: usable" "$tmp/with_5hmc.bed.gz" 0 ""
-run_case "no 5hmC rows and N_other > 0: stop" "$tmp/no_5hmc_other_mods.bed.gz" 1 "5hmC"
+run_case "no 5hmC rows and N_other > 0: stop" "$tmp/no_5hmc_other_mods.bed.gz" 1 "DMR not skipped"
 run_case "HAC 5mC only and N_other = 0: usable" "$tmp/hac_5mc_only.bed.gz" 0 ""
 run_case "no rows at all: stop" "$tmp/empty.bed.gz" 1 "no rows"
 exit $failed

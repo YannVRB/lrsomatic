@@ -86,12 +86,12 @@ workflow TIMEPOINT_DMR {
     )
     ch_versions = ch_versions.mix(DMR_HAPLOTYPE_REGIONS.out.versions)
 
-    // modkit dmr pair fails on an empty regions file: skip those comparisons
+    // modkit dmr pair fails on an empty regions file. The comparison is the purpose of this run (dev's haplotype
+    // DMR can skip a sample), so say which one has nothing in common instead of finishing without its result.
     DMR_HAPLOTYPE_REGIONS.out.regions_bed
         .filter { meta, regions_bed ->
             if (regions_bed.size() == 0) {
-                log.warn("DMR: no CpG island is covered in both samples of ${meta.id}; skipping modkit dmr pair")
-                return false
+                error("DMR: no CpG island is covered in both samples of ${meta.id}; check that both pileups are whole-genome and from the same genome build")
             }
             return true
         }

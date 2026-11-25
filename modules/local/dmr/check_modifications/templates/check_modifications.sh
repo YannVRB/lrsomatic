@@ -17,6 +17,6 @@ case "\$verdict" in
         echo "\$file: no rows in the bedMethyl file" >&2
         exit 1 ;;
     *)
-        echo "\$file: rows with other modifications (N_other > 0) and no 5hmC rows; re-run lrsomatic with 'Phased methylation pileup' ticked" >&2
+        echo "\$file: rows with other modifications (N_other > 0) and no 5hmC rows; re-run lrsomatic with 'Phased methylation pileup' ticked and DMR not skipped (or --modkit_args including 5hmC)" >&2
         exit 1 ;;
 esac

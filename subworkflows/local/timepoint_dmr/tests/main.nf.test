@@ -93,13 +93,13 @@ nextflow_workflow {
         }
     }
 
-    test("no CpG island covered in both samples -> comparison skipped, run succeeds") {
+    test("no CpG island covered in both samples -> the run fails and names the comparison") {
 
         when {
             workflow {
                 """
-                // An island on a contig the BAM has no reads on: DMR_HAPLOTYPE_REGIONS writes an empty regions
-                // BED, which modkit dmr pair would reject.
+                // An island on a contig the BAM has no reads on: DMR_HAPLOTYPE_REGIONS writes an empty regions BED,
+                // which modkit dmr pair would reject. A comparison is the purpose of the run, so this is an error.
                 def cpg_islands_bed = Channel.of('chr1\\t0\\t1000')
                     .collectFile(name: 'cpg_islands.bed', newLine: true).first()
                 def gencode_gene_bed = Channel.of('chr22\\t0\\t40001\\tTEST_GENE\\t.\\t+')
@@ -124,10 +124,10 @@ nextflow_workflow {
             def processes = workflow.trace.tasks().collect { task -> task.name }
 
             assertAll(
-                { assert workflow.success },
+                { assert workflow.failed },
                 { assert processes.any { name -> name.contains('DMR_HAPLOTYPE_REGIONS') } },
                 { assert !processes.any { name -> name.contains('MODKIT_DMR') } },
-                { assert workflow.out.nearest_gene_bed.size() == 0 }
+                { assert workflow.stdout.toString().contains('S4_vs_S1') || workflow.stderr.toString().contains('S4_vs_S1') }
             )
         }
     }
