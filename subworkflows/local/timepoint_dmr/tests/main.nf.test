@@ -1,0 +1,171 @@
+nextflow_workflow {
+
+    name "Test Workflow TIMEPOINT_DMR"
+    script "../main.nf"
+    workflow "TIMEPOINT_DMR"
+    config "./nextflow.config"
+
+    tag "subworkflows"
+    tag "subworkflows_local"
+    tag "timepoint_dmr"
+
+    // One real pileup of the public nanopore BAM; each test uses it as the baseline and as the later timepoint
+    setup {
+        run("MODKIT_PILEUP") {
+            script "../../../../modules/nf-core/modkit/pileup/main.nf"
+            process {
+                """
+                input[0] = [
+                    [ id: 'test', type: 'tumor' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/nanopore/bam/test.sorted.phased.bam', checkIfExists: true),
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/nanopore/bam/test.sorted.phased.bam.bai', checkIfExists: true)
+                ]
+                input[1] = [
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta', checkIfExists: true)
+                ]
+                input[2] = [
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta.fai', checkIfExists: true)
+                ]
+                input[3] = [[:],[]]
+                """
+            }
+        }
+    }
+
+    test("two comparisons against one baseline -> one annotated DMR result each") {
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            workflow {
+                """
+                def cpg_islands_bed = Channel.of('chr22\\t0\\t40001')
+                    .collectFile(name: 'cpg_islands.bed', newLine: true).first()
+                def gencode_gene_bed = Channel.of('chr22\\t0\\t40001\\tTEST_GENE\\t.\\t+')
+                    .collectFile(name: 'gencode_gene.bed', newLine: true).first()
+
+                // [meta, treatment_bed, control_bed]; the same pileup is the baseline and both later timepoints
+                input[0] = MODKIT_PILEUP.out.bedgz.flatMap { meta, bed ->
+                    [ [ [ id: 'S4_vs_S1' ], bed, bed ], [ [ id: 'S6_vs_S1' ], bed, bed ] ]
+                }
+                input[1] = channel.value([
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta', checkIfExists: true)
+                ])
+                input[2] = channel.value([
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta.fai', checkIfExists: true)
+                ])
+                input[3] = cpg_islands_bed
+                input[4] = gencode_gene_bed
+                """
+            }
+        }
+
+        then {
+            def count = { proc -> workflow.trace.succeeded().count { task -> task.name.contains(":${proc} ") } }
+
+            assertAll(
+                { assert workflow.success },
+                { assert count('DMR_CHECK_MODIFICATIONS') == 4 : "check tasks: ${count('DMR_CHECK_MODIFICATIONS')}" },
+                { assert count('DMR_HAPLOTYPE_REGIONS') == 2 },
+                { assert count('MODKIT_DMR') == 2 },
+                { assert count('DMR_NEAREST_GENE') == 2 },
+                { assert workflow.out.nearest_gene_bed.collect { meta, _bed -> meta.id }.sort() == ['S4_vs_S1', 'S6_vs_S1'] },
+                { workflow.out.nearest_gene_bed.each { meta, bed -> assert file(bed).name == "${meta.id}.nearestGene.bed" } },
+                // Only the results are published, one folder per comparison: not the (large) indexed pileups or
+                // the regions files that the root config would otherwise copy into <outdir>/htslib, /dmr, /samtools.
+                // pipeline_info and modkit (the setup pileup) are not ours.
+                {
+                    def root = new File("$outputDir").toPath()
+                    def published = []
+                    new File("$outputDir").eachFileRecurse(groovy.io.FileType.FILES) { f -> published << root.relativize(f.toPath()).toString() }
+                    published = published.findAll { !it.startsWith('pipeline_info/') && !it.startsWith('modkit/') }.sort()
+                    assert published == [
+                        'S4_vs_S1/dmr/S4_vs_S1.log', 'S4_vs_S1/dmr/S4_vs_S1.nearestGene.bed',
+                        'S6_vs_S1/dmr/S6_vs_S1.log', 'S6_vs_S1/dmr/S6_vs_S1.nearestGene.bed'
+                    ] : "published: ${published}"
+                }
+            )
+        }
+    }
+
+    test("no CpG island covered in both samples -> comparison skipped, run succeeds") {
+
+        when {
+            workflow {
+                """
+                // An island on a contig the BAM has no reads on: DMR_HAPLOTYPE_REGIONS writes an empty regions
+                // BED, which modkit dmr pair would reject.
+                def cpg_islands_bed = Channel.of('chr1\\t0\\t1000')
+                    .collectFile(name: 'cpg_islands.bed', newLine: true).first()
+                def gencode_gene_bed = Channel.of('chr22\\t0\\t40001\\tTEST_GENE\\t.\\t+')
+                    .collectFile(name: 'gencode_gene.bed', newLine: true).first()
+
+                input[0] = MODKIT_PILEUP.out.bedgz.map { meta, bed -> [ [ id: 'S4_vs_S1' ], bed, bed ] }
+                input[1] = channel.value([
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta', checkIfExists: true)
+                ])
+                input[2] = channel.value([
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta.fai', checkIfExists: true)
+                ])
+                input[3] = cpg_islands_bed
+                input[4] = gencode_gene_bed
+                """
+            }
+        }
+
+        then {
+            def processes = workflow.trace.tasks().collect { task -> task.name }
+
+            assertAll(
+                { assert workflow.success },
+                { assert processes.any { name -> name.contains('DMR_HAPLOTYPE_REGIONS') } },
+                { assert !processes.any { name -> name.contains('MODKIT_DMR') } },
+                { assert workflow.out.nearest_gene_bed.size() == 0 }
+            )
+        }
+    }
+
+    test("an unreadable bedMethyl stops the run at the check, before modkit") {
+
+        when {
+            workflow {
+                """
+                // Not gzip: the check reports "no rows" and fails. The 5hmC and N_other cases are in
+                // modules/local/dmr/check_modifications/tests/check_modifications.test.sh.
+                def broken = Channel.of('not a bedMethyl').collectFile(name: 'broken.bed.gz', newLine: true)
+                def cpg_islands_bed = Channel.of('chr22\\t0\\t40001').collectFile(name: 'cpg_islands.bed', newLine: true).first()
+                def gencode_gene_bed = Channel.of('chr22\\t0\\t40001\\tTEST_GENE\\t.\\t+').collectFile(name: 'gencode_gene.bed', newLine: true).first()
+
+                input[0] = broken.map { bed -> [ [ id: 'S4_vs_S1' ], bed, bed ] }
+                input[1] = channel.value([
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta', checkIfExists: true)
+                ])
+                input[2] = channel.value([
+                    [ id: 'test_ref' ],
+                    file(params.modules_testdata_base_path + 'genomics/homo_sapiens/genome/genome.fasta.fai', checkIfExists: true)
+                ])
+                input[3] = cpg_islands_bed
+                input[4] = gencode_gene_bed
+                """
+            }
+        }
+
+        then {
+            def processes = workflow.trace.tasks().collect { task -> task.name }
+
+            assertAll(
+                { assert workflow.failed },
+                { assert processes.any { name -> name.contains('DMR_CHECK_MODIFICATIONS') } },
+                { assert !processes.any { name -> name.contains('MODKIT_DMR') } }
+            )
+        }
+    }
+}
